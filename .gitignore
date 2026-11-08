@@ -1,0 +1,26 @@
+# ---- Python / environment ----
+.venv/
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+.DS_Store
+
+# ---- Data: keep folder structure, ignore contents ----
+data/raw/*
+!data/raw/.gitkeep
+!data/raw/README.md
+
+data/transformed/*
+!data/transformed/.gitkeep
+
+data/cleaned/processed/*
+!data/cleaned/processed/.gitkeep
+
+data/cleaned/spatial_analysis/*
+!data/cleaned/spatial_analysis/.gitkeep
+
+# ---- Script outputs ----
+*_output.txt
+
+# ---- Visualizations (remove this line if you want figures on GitHub) ----
+visualizations/**/*.png
