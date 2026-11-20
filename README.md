@@ -4,25 +4,41 @@ Thesis Project by Kana Tateishi, "Contributing to Community Knowledge on Potenti
 ## Project Structure
 
 ```
-dc-impact/
+dc_impacts/
 ├── data/
-│   ├── raw/                  # untouched downloads
-│   ├── transformed/          # geometric operations only
-│   └── cleaned/              # attribute cleaning
-│       ├── processed/         # Reconfigured layer for SEVI
-│       └── spatial_analysis/  # Moran's I or something like this
-├── visualizations/           
-│   ├── spatial_analysis_viz/          
-│   └── sevi_map/   		  
-├── src/dc-impact/
+│   ├── raw/                                 # untouched downloads
+|   |   ├── context/                         # additional data for spatial context - all shapefiles
+|   |   |   ├── County_Parks/
+|   |   |   ├── CountyReg_Streams/
+|   |   |   ├── Lakes/
+|   |   |   ├── Major_Lakes/
+|   |   |   └── state_parks/
+|   |   ├── Data_Center_Information/         # csv files - point location data
+|   |   ├── EJI_2024_United_States.gdb/      # geodatabase file, county geometry is taken from this
+|   |   └── Rockland_Land_Use_2021/          # land use data - shapefiles
+│   ├── transformed/                         # geometric operations only, transforms to geojson files
+|   |   └── context/
+│   └── cleaned/                             # attribute cleaning
+│       ├── processed/                       # Reconfigured layer for SEVI
+│       └── spatial_analysis/                # correlation analyses and LISA results
+├── visualizations/    
+│   ├── eji_modules/                         # descriptive, visualize all 4 modules
+│   ├── land_use/                            # descriptive, visualize land use layer
+│   ├── spatial_analysis_viz/                # LISA hotspot maps
+│   └── sevi_map/   		    
+├── src/dc_impacts/
 │   ├── __init__.py
 │   ├── __main__.py           
-│   ├── a_preprocessing.py      # reproject + filter to Rockland
-│   ├── b_indicators.py         # build/normalize SEVI indicators   
-│   ├── c_apply_weights.py 	   # MCDA weighting + aggregation
-│   ├── d_spatial_analysis.py   # Moran's I / LISA on the composite index 
-│   ├── e_dc_buffers.py         # data center impact buffers
-│   └── visualization.py      
+│   ├── a_preprocessing.py                   # filter and clip study area + reproject geometry + geojson
+│   ├── b_sevi.py                            # clean/normalize EJI SEVI attributes   
+│   ├── c_overlays.py                        # clean data center + land use attributes   
+│   ├── d_apply_weights.py 	                 # MCDA weighting + aggregation
+│   ├── e_spatial_analysis.py                # Moran's I / LISA on the individual indices and overall composite index
+│   ├── f_dc_buffers.py                      # build data center impact buffers
+│   ├── g_land_use.py                        # land use percentage inside the buffer
+│   └── visualization.py   
+├── scripts/
+│   └── check_outputs.py   
 ├── pyproject.toml
 └── README.md
 

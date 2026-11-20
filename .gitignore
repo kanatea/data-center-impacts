@@ -13,8 +13,14 @@ data/raw/*
 data/transformed/*
 !data/transformed/.gitkeep
 
-data/cleaned/processed/*
-!data/cleaned/processed/.gitkeep
+data/transformed/contents/*
+!data/transformed/contents/.gitkeep
+
+data/cleaned/SEVI/*
+!data/cleaned/SEVI/.gitkeep
+
+data/cleaned/overlays/*
+!data/cleaned/overlays/.gitkeep
 
 data/cleaned/spatial_analysis/*
 !data/cleaned/spatial_analysis/.gitkeep

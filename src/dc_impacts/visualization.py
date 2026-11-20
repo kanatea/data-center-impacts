@@ -351,3 +351,51 @@ def plot_land_use_with_context(
     ax.set_title(title or "Land use categories with parks and water features", fontsize=13)
     ax.set_axis_off()
     _save(fig, output_path)
+
+
+# ---------------------------------------------------------------------------
+# Data Center point layer
+# ---------------------------------------------------------------------------
+
+def plot_data_centers(
+    tracts: gpd.GeoDataFrame,
+    boundary: gpd.GeoDataFrame,
+    data_centers: gpd.GeoDataFrame,
+    search_buffer_m: float = 0,
+    title: Optional[str] = None,
+    output_path: Optional[Path] = None,
+):
+    """Preprocessing check: data centers inside the study area vs. within the search buffer."""
+    fig, ax = plt.subplots(figsize=(10, 12))
+    tracts.plot(ax=ax, color="whitesmoke", edgecolor="lightgrey", linewidth=0.3)
+    boundary.boundary.plot(ax=ax, color="black", linewidth=1.2)
+    handles = [Line2D([0], [0], color="black", lw=1.2, label="Study area boundary")]
+
+    if "in_study_area" in data_centers.columns:
+        flag = data_centers["in_study_area"].astype(bool)
+        inside, outside = data_centers[flag], data_centers[~flag]
+    else:
+        inside, outside = data_centers, data_centers.iloc[0:0]
+
+    if not inside.empty:
+        inside.plot(ax=ax, color="#d7301f", markersize=40, edgecolor="black", linewidth=0.5, zorder=3)
+    handles.append(Line2D([0], [0], marker="o", color="w", markerfacecolor="#d7301f", markeredgecolor="black",
+                          markersize=8, label=f"Data centers in study area ({len(inside)})"))
+    if not outside.empty:
+        outside.plot(ax=ax, color="#fdae6b", markersize=30, edgecolor="black", linewidth=0.5, zorder=3)
+        handles.append(Line2D([0], [0], marker="o", color="w", markerfacecolor="#fdae6b", markeredgecolor="black",
+                              markersize=7, label=f"Data centers nearby ({len(outside)})"))
+
+    if search_buffer_m > 0:
+        search = boundary.buffer(search_buffer_m)
+        search.boundary.plot(ax=ax, color="grey", linewidth=0.8, linestyle="--")
+        handles.append(Line2D([0], [0], color="grey", lw=0.8, ls="--",
+                              label=f"Search buffer ({search_buffer_m / 1000:g} km)"))
+        minx, miny, maxx, maxy = search.total_bounds
+        ax.set_xlim(minx, maxx)
+        ax.set_ylim(miny, maxy)
+
+    ax.legend(handles=handles, loc="upper left", bbox_to_anchor=(1.01, 1), frameon=False, fontsize=9)
+    ax.set_title(title or "Data center locations", fontsize=13)
+    ax.set_axis_off()
+    _save(fig, output_path)
