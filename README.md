@@ -19,13 +19,9 @@ dc_impacts/
 │   ├── transformed/                         # geometric operations only, transforms to geojson files
 |   |   └── context/
 │   └── cleaned/                             # attribute cleaning
-│       ├── processed/                       # Reconfigured layer for SEVI
+│       ├── SEVI/                            # Reconfigured layer for SEVI
+│       ├── overlays/                        # Reconfigured layer for land use and data center buffer overlays
 │       └── spatial_analysis/                # correlation analyses and LISA results
-├── visualizations/    
-│   ├── eji_modules/                         # descriptive, visualize all 4 modules
-│   ├── land_use/                            # descriptive, visualize land use layer
-│   ├── spatial_analysis_viz/                # LISA hotspot maps
-│   └── sevi_map/   		    
 ├── src/dc_impacts/
 │   ├── __init__.py
 │   ├── __main__.py           
@@ -37,6 +33,11 @@ dc_impacts/
 │   ├── f_dc_buffers.py                      # build data center impact buffers
 │   ├── g_land_use.py                        # land use percentage inside the buffer
 │   └── visualization.py   
+├── visualizations/    
+│   ├── eji_modules/                         # descriptive, visualize all 4 modules
+│   ├── land_use/                            # descriptive, visualize land use layer
+│   ├── spatial_analysis_viz/                # LISA hotspot maps
+│   └── sevi_map/   		    
 ├── scripts/
 │   └── check_outputs.py   
 ├── pyproject.toml
