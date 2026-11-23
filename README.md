@@ -8,11 +8,6 @@ dc_impacts/
 ├── data/
 │   ├── raw/                                 # untouched downloads
 |   |   ├── context/                         # additional data for spatial context - all shapefiles
-|   |   |   ├── County_Parks/
-|   |   |   ├── CountyReg_Streams/
-|   |   |   ├── Lakes/
-|   |   |   ├── Major_Lakes/
-|   |   |   └── state_parks/
 |   |   ├── Data_Center_Information/         # csv files - point location data
 |   |   ├── EJI_2024_United_States.gdb/      # geodatabase file, county geometry is taken from this
 |   |   └── Rockland_Land_Use_2021/          # land use data - shapefiles
