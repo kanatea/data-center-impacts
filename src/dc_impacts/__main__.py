@@ -15,6 +15,8 @@ from dc_impacts.a_preprocessing import (
 )
 from dc_impacts.b_sevi import calculate_local_indicators
 from dc_impacts.c_overlays import clean_overlays
+from dc_impacts.d_apply_weights import apply_weights
+from dc_impacts.e_spatial_analysis import calculate_module_correlations, calculate_eji_correlations, run_spatial_analysis
 from dc_impacts.visualization import (
     plot_context_layers,
     plot_data_centers,
@@ -22,6 +24,9 @@ from dc_impacts.visualization import (
     plot_land_use_categories,
     plot_land_use_overlay,
     plot_land_use_with_context,
+    plot_composite_sevi,
+    plot_risk_categories,
+    plot_lisa_results,
 )
 
 logging.basicConfig(
@@ -56,22 +61,30 @@ def main(
         ["Rockland"],
         "--county",
         "-c",
-        help="County name(s). Repeatable: -c Rockland -c Orange. Default: Rockland.",
+        help="County name(s).",
     ),
     # Defines the study area, defaults to New York
     states: List[str] = typer.Option(
         ["New York"],
         "--state",
         "-s",
-        help="State name or abbreviation. Give one (applies to all counties) or one per county, in order. Default: New York.",
+        help="State name or abbreviation.",
     ),
     # Points to a land use file for non-default (non-Rockland) areas
     land_use_file: str = typer.Option(
         LAND_USE_DEFAULT,
         "--land_use_file",
         "-lu",
-        help="Land use file or folder inside data/raw/ (or a full path). Folders are searched for .shp/.geojson/.gpkg. Default: Rockland_Land_Use_2021.",
+        help="Land use file or folder inside data/raw/ (or a full path). Folders are searched for .shp/.geojson/.gpkg.",
     ),
+    # Spatial Analysis flags
+    contiguity: str = typer.Option("queen", "--contiguity", "-cont", help="Spatial weights: queen, rook, k_nearest"),
+    k_neighbors: int = typer.Option(4, "--k-neighbors", "-kn", help="K for k_nearest neighbors"),
+    # SEVI Weight flags
+    w_svm: float = typer.Option(0.25, "--w-svm", help="Weight for Social Vulnerability"),
+    w_ebm: float = typer.Option(0.25, "--w-ebm", help="Weight for Environmental Burden"),
+    w_cbm: float = typer.Option(0.25, "--w-cbm", help="Weight for Climate Burden"),
+    w_hvm: float = typer.Option(0.25, "--w-hvm", help="Weight for Health Vulnerability"),
     # --- Development flags
     epsg_override: Optional[int] = typer.Option(
         None, "--epsg", hidden=True,
@@ -82,8 +95,10 @@ def main(
         help="Re-process land use + context layers even if they exist in data/transformed/.",
     ),
     skip_preprocessing: bool = typer.Option(False, "--skip-preprocessing", "-sp", hidden=True),
-    skip_sevi: bool = typer.Option(False, "--skip-sevi", "-ss", hidden=True),
+    skip_eji: bool = typer.Option(False, "--skip-sevi", "-ss", hidden=True),
     skip_overlays: bool = typer.Option(False, "--skip-overlays", "-so", hidden=True),
+    skip_sevi: bool = typer.Option(False, "--skip-weights", "-sw", hidden=True),
+    skip_spatial: bool = typer.Option(False, "--skip-spatial", "-ssy", hidden=True),
     skip_viz: bool = typer.Option(False, "--skip-viz", "-sv", hidden=True),
 ):
     # Loading configuration and project paths
@@ -95,6 +110,8 @@ def main(
     overlays_dir = cleaned_dir / "overlays"          # data centers + land use
     spatial_dir = cleaned_dir / "spatial_analysis"   # Moran's I / LISA
     viz_dir = project_root / "visualizations"
+    sevi_viz = viz_dir / "sevi"
+    lisa_viz = viz_dir / "lisa"
 
 
     dc_path = raw_dir / DATA_CENTER_FILE
@@ -163,6 +180,7 @@ def main(
     # b) cleaned/processed/ (SEVI inputs)
     indicators_output = sevi_dir / f"eji_local_{area_name}.geojson"
     indicators_summary = sevi_dir / f"indicator_summary_{area_name}.csv"
+    sevi_output = sevi_dir / f"composite_sevi_{area_name}.geojson"
 
     # c) cleaned/overlays/ (data centers + land use)
     dc_cleaned = overlays_dir / f"data_centers_{area_name}.geojson"
@@ -202,7 +220,7 @@ def main(
     # 2. SEVI INDICATORS (b): -999 -> NaN, verify EJI logic,
     #    recalculate all four modules within the study area
     # -----------------------------------------------------------------------
-    if not skip_sevi:
+    if not skip_eji:
         if eji_transformed.exists():
             logger.info("Starting local indicator calculation...")
             calculate_local_indicators(
@@ -226,10 +244,78 @@ def main(
     else:
         logger.info("Skipping overlays.")
 
-    # 4. MCDA WEIGHTS       (d_apply_weights.py)
-    # 5. SPATIAL ANALYSIS   (e_spatial_analysis.py)
+    # -----------------------------------------------------------------------
+    # 4. MCDA WEIGHTS (d_apply_weights.py)
+    # -----------------------------------------------------------------------
+    if not skip_sevi:
+        logger.info("Applying MCDA weights to create Composite SEVI...")
+        apply_weights(
+            area_name=area_name,
+            input_dir=sevi_dir,
+            output_dir=sevi_dir,
+            w_svm=w_svm,
+            w_ebm=w_ebm,
+            w_cbm=w_cbm,
+            w_hvm=w_hvm,
+            overwrite=overwrite
+        )
+    else:
+        logger.info("Skipping MCDA weights.")
+
+
+    # -----------------------------------------------------------------------
+    # 5. SPATIAL ANALYSIS (e_spatial_analysis.py)
+    # -----------------------------------------------------------------------
+    if not skip_spatial:
+        logger.info("Starting Granular ESDA...")
+        
+        # Load the indicators file once
+        gdf_indicators = gpd.read_file(indicators_output)
+        # Load the composite file (contains composite_sevi)
+        gdf_composite = gpd.read_file(sevi_output)
+        
+        # 1. Internal Correlations (Variable vs Variable)
+        calculate_module_correlations(
+            gdf=gdf_indicators, 
+            area_name=area_name, 
+            output_dir=spatial_dir
+        )
+        
+        # 2. Between Correlations (Module vs Module)
+        calculate_eji_correlations(
+            gdf=gdf_indicators, 
+            area_name=area_name, 
+            output_dir=spatial_dir
+        )
+        
+        # 3. Global & Local Moran's I
+        analysis_targets = [
+            ("RPL_SVM_LOCAL", gdf_indicators),
+            ("RPL_EBM_LOCAL", gdf_indicators),
+            ("RPL_CBM_LOCAL", gdf_indicators),
+            ("RPL_HVM_LOCAL", gdf_indicators),
+            ("composite_sevi", gdf_composite),
+        ]
+        
+        for col_name, target_gdf in analysis_targets:
+            logger.info(f"Running spatial analysis for {col_name}...")
+            run_spatial_analysis(
+                gdf=target_gdf,
+                target_col=col_name,
+                area_name=area_name,
+                output_dir=spatial_dir,
+                contiguity_type=contiguity,
+                k_neighbors=k_neighbors,
+                overwrite=overwrite
+            )
+    else:
+        logger.info("Skipping spatial analysis.")
+
+
     # 6. DC IMPACT BUFFERS  (f_dc_buffers.py)
     # 7. BUFFER LAND USE %  (g_buffer_land_use.py)
+
+
 
     # -----------------------------------------------------------------------
     # VISUALIZATION: EJI modules, data centers, land use, context layers
@@ -317,7 +403,36 @@ def main(
                         output_path=land_use_viz_dir / f"land_use_context_{area_name}.png",
                     )
             else:
-                logger.warning("No classified land use file. Skipping land use category maps.")
+                 logger.warning("No classified land use file. Skipping land use category maps.")
+            
+            # Plot SEVI Map
+            if sevi_dir.exists():
+                plot_composite_sevi(
+                    area_name=area_name,
+                    sevi_dir=sevi_dir,
+                    dc_dir=overlays_dir, 
+                    title=f"Composite Social-Environmental Vulnerability Index: {area_label}",
+                    output_dir=Path(sevi_viz)
+                )
+                plot_risk_categories(
+                    area_name=area_name,
+                    sevi_dir=sevi_dir,
+                    dc_dir=overlays_dir, 
+                    title=f"SEVI Risk Classification: {area_label}",
+                    output_dir=Path(sevi_viz)
+                )
+            else: logger.warning("No SEVI file. Skipping SEVI map visualization.")
+
+            # Plot LISA Maps
+            if spatial_dir.exists():
+                plot_lisa_results(
+                    area_name=area_name,
+                    spatial_dir=spatial_dir,
+                    boundary_path=boundary_path,
+                    title=f"LISA Hotspot: {area_label}", # Your naming convention
+                    output_dir=Path(lisa_viz)
+                )
+            else: logger.warning("No SEVI file. Skipping SEVI map visualization.")
     else:
         logger.info("Skipping visualization.")
 

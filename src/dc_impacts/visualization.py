@@ -399,3 +399,200 @@ def plot_data_centers(
     ax.set_title(title or "Data center locations", fontsize=13)
     ax.set_axis_off()
     _save(fig, output_path)
+
+
+# ---------------------------------------------------------------------------
+# SEVI map
+# ---------------------------------------------------------------------------
+
+def plot_composite_sevi(
+    area_name: str, 
+    sevi_dir: Path, 
+    dc_dir: Path = None,
+    title: Optional[str] = None, 
+    output_dir: Path = Path("outputs/maps")
+):
+    """Creates a continuous choropleth map of the Composite SEVI (0-1)."""
+    sevi_path = sevi_dir / f"composite_sevi_{area_name}.geojson"
+    if not sevi_path.exists():
+        logger.error(f"Composite SEVI file not found: {sevi_path}")
+        return
+
+    gdf = gpd.read_file(sevi_path)
+    
+    # 2. Setup Plot
+    fig, ax = plt.subplots(1, 1, figsize=(12, 10))
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # 3. Plot Choropleth
+    # 'YlOrRd' (Yellow-Orange-Red) is standard for vulnerability/risk maps
+    gdf.plot(
+        column="composite_sevi",
+        cmap="YlOrRd",
+        legend=True,
+        legend_kwds={"label": "Composite SEVI Score (0=Low, 1=High)"},
+        ax=ax, edgecolor="white", linewidth=0.5
+    )
+
+    # 4. Overlay Data Centers (If provided)
+    if dc_dir:
+        dc_path = dc_dir / f"data_centers_{area_name}.geojson"
+        if dc_path.exists():
+            dcs = gpd.read_file(dc_path)
+            dcs.plot(
+                ax=ax, 
+                color="blue", 
+                marker="^", 
+                markersize=100, 
+                label="Data Center", 
+                edgecolor="black",
+                zorder=5
+            )
+            ax.legend(loc="upper right")
+        else:
+            logger.warning("DC file not found, skipping overlay.")
+
+    # 5. Final Formatting
+    ax.set_title(title, fontsize=15)
+    ax.set_axis_off()
+
+    # Save
+    plt.savefig(output_dir / f"composite_sevi_{area_name}.png", bbox_inches="tight", dpi=300)
+    plt.close()
+
+
+## Map with categories
+
+def plot_risk_categories(
+    area_name: str, 
+    sevi_dir: Path, 
+    dc_dir: Path = None, 
+    title: Optional[str] = None,
+    output_dir: Path = Path("outputs/maps")
+):
+    """Creates a discrete 3-color map (Green, Yellow, Red) based on Risk Level."""
+    sevi_path = sevi_dir / f"composite_sevi_{area_name}.geojson"
+    if not sevi_path.exists():
+        logger.error(f"Composite SEVI file not found: {sevi_path}")
+        return
+
+    gdf = gpd.read_file(sevi_path)
+    risk_colors = {
+        "Very Low Risk": "#B2DF87",       # Light Green
+        "Low-Moderate Risk": "#FEE08B",   # Yellow
+        "Moderate-High Risk": "#FB9A99",  # Light Red/Pink
+        "High Risk": "#D73027"           # Deep Red
+    }
+
+    fig, ax = plt.subplots(1, 1, figsize=(12, 10))
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    for risk, color in risk_colors.items():
+        gdf[gdf["risk_level"] == risk].plot(
+            ax=ax, color=color, edgecolor="white", linewidth=0.5, label=risk
+        )
+
+    if dc_dir:
+        dc_path = dc_dir / f"data_centers_{area_name}.geojson"
+        if dc_path.exists():
+            gpd.read_file(dc_path).plot(ax=ax, color="blue", marker="^", markersize=100, zorder=5)
+
+    ax.set_title(title, fontsize=15)
+    ax.legend(
+        title="Vulnerability Level", 
+        loc='center right', 
+        bbox_to_anchor=(-0.05, 0.5), # -0.05 = just outside left edge, 0.5 = centered vertically
+        fontsize=12
+    )
+    ax.set_axis_off()
+    plt.savefig(output_dir / f"sevi_risk_categories_{area_name}.png", bbox_inches="tight", dpi=300)
+    plt.close()
+
+    logger.info(f"Saved Composite SEVI map to {output_dir}")
+
+
+# LISA MAPS
+
+def plot_lisa_results(
+    area_name: str, 
+    spatial_dir: Path, 
+    boundary_path: Path, 
+    title: str, # Pass the base title here
+    output_dir: Path = Path("visualizations")
+):
+    """
+    Creates two outputs:
+    1. A 2x2 grid of the 4 individual EJI module LISA maps.
+    2. A high-resolution standalone map of the Composite SEVI LISA hotspots.
+    """
+    lisa_colors = {
+        "HH": "#d73027", "LL": "#4575b4", "HL": "#fee090", "LH": "#abd9e9", "NS": "#f7f7f7"
+    }
+
+    # --- PART 1: 2x2 Grid for EJI Modules ---
+    modules = ["RPL_SVM_LOCAL", "RPL_EBM_LOCAL", "RPL_HVM_LOCAL", "RPL_CBM_LOCAL"]
+    fig, axes = plt.subplots(2, 2, figsize=(15, 12))
+    axes = axes.flatten()
+    boundary = gpd.read_file(boundary_path)
+
+    for i, module in enumerate(modules):
+        ax = axes[i]
+        file_path = spatial_dir / f"lisa_hotspots_{module}_{area_name}.geojson"
+        if not file_path.exists():
+            ax.text(0.5, 0.5, f"Missing: {module}", ha='center')
+            ax.axis('off')
+            continue
+            
+        gdf = gpd.read_file(file_path)
+        boundary.plot(ax=ax, color='none', edgecolor='black', linewidth=0.5)
+        gdf.boundary.plot(ax=ax, color='#808080', linewidth=0.4)
+        gdf.plot(
+            ax=ax, categorical=True, legend=False, 
+            color=[lisa_colors.get(val, "#f7f7f7") for val in gdf["lisa_cluster"]]
+        )
+        ax.set_title(f"{module.replace('RPL_', '').replace('_LOCAL', '')}", fontsize=14, fontweight='bold')
+        ax.axis('off')
+
+    legend_elements = [Line2D([0], [0], marker='s', color='w', label=k, 
+                              markerfacecolor=v, markersize=15) for k, v in lisa_colors.items()]
+    fig.legend(handles=legend_elements, loc='lower center', bbox_to_anchor=(0.5, 0.05), 
+               ncol=5, title="LISA Clusters", fontsize=12)
+
+    # Use the base title + a suffix
+    plt.suptitle(f"{title} - Module Grid", fontsize=20, fontweight='bold')
+    plt.tight_layout(rect=[0, 0.1, 1, 0.95])
+    grid_path = output_dir / f"lisa_module_grid_{area_name}.png"
+    plt.savefig(grid_path, dpi=300)
+    plt.close()
+
+    # --- PART 2: Standalone Composite SEVI Map ---
+    plt.figure(figsize=(10, 10))
+    ax = plt.gca()
+    
+    comp_path = spatial_dir / f"lisa_hotspots_composite_sevi_{area_name}.geojson"
+    if comp_path.exists():
+        gdf_comp = gpd.read_file(comp_path)
+        boundary.plot(ax=ax, color='none', edgecolor='black', linewidth=0.7)
+        gdf_comp.boundary.plot(ax=ax, color='#808080', linewidth=0.6)
+        gdf_comp.plot(
+            ax=ax, categorical=True, legend=False, 
+            color=[lisa_colors.get(val, "#f7f7f7") for val in gdf_comp["lisa_cluster"]]
+        )
+        
+        # Use the base title + a suffix
+        plt.title(f"{title} - Composite SEVI", fontsize=18, fontweight='bold')
+        
+        legend_elements = [Line2D([0], [0], marker='s', color='w', label=k, 
+                                  markerfacecolor=v, markersize=15) for k, v in lisa_colors.items()]
+        ax.legend(
+            handles=legend_elements, 
+            loc='lower left', 
+            bbox_to_anchor=(1.05, 0), 
+            title="LISA Clusters",
+            fontsize=12
+        )
+        ax.axis('off')
+        
+        standalone_path = output_dir / f"lisa_composite_standalone_{area_name}.png"
+        plt.savefig(standalone_path, dpi=300, bbox_inches='tight')
+        plt.close()
